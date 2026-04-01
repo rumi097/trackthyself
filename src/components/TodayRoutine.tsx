@@ -150,11 +150,6 @@ export default function TodayRoutine() {
     .filter((task) => toDateKey(task.date) === todayKey)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  const todayDayOfWeek = new Date().getDay();
-  const todayWeeklyTasks = allTasks
-    .filter((task) => task.type === "WEEKLY_RECURRING" && task.dayOfWeek === todayDayOfWeek)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
   const formatTime12h = (time24: string) => {
     if (!time24) return "";
     const [h, m] = time24.split(":");
@@ -191,67 +186,13 @@ export default function TodayRoutine() {
           <h2 className="text-2xl font-bold">Today&apos;s Routine</h2>
         </div>
         
-        {todayWeeklyTasks.length === 0 && todayDailyTasks.length === 0 ? (
+        {todayDailyTasks.length === 0 ? (
           <div className="text-center py-10 text-gray-500">
             <p>Your day is completely free.</p>
             <p className="text-sm mt-2">Go to the Routine planner to add some tasks!</p>
           </div>
         ) : (
           <div className="space-y-8">
-            {todayWeeklyTasks.length > 0 && (
-              <div>
-                <h3 className="text-lg font-bold mb-4 text-purple-400 border-b border-gray-700 pb-2">
-                  Weekly Goals Linked to Today
-                </h3>
-                <div className="grid grid-cols-1 gap-3">
-                  {todayWeeklyTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className={`p-3 flex gap-3 border rounded-lg transition items-center ${
-                        task.completionPercent >= 100
-                          ? "bg-green-900/10 border-green-500/30 opacity-75"
-                          : "bg-gray-750 border-gray-600"
-                      }`}
-                    >
-                      <button
-                        onClick={() => toggleTask(task.id, task.completionPercent)}
-                        className="shrink-0 text-gray-400 hover:text-green-400 transition"
-                      >
-                        {task.completionPercent >= 100 ? (
-                          <CheckCircle2 className="w-6 h-6 text-green-500" />
-                        ) : (
-                          <Circle className="w-6 h-6" />
-                        )}
-                      </button>
-                      <div className="flex-1">
-                        <h4
-                          className={`font-semibold ${
-                            task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"
-                          }`}
-                        >
-                          {task.title}
-                        </h4>
-                        <p className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</p>
-                        {task.chapter && (
-                          <div className="text-xs text-blue-300 mt-1">
-                            {task.chapter.subject.name}: {task.chapter.name}
-                          </div>
-                        )}
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(task.completionPercent || 0)}
-                        onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
-                        className="w-24"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div>
               <h3 className="text-xl font-bold mb-6 text-green-400">
                 Timetable for {format(new Date(todayKey), "MMM d, yyyy")}
