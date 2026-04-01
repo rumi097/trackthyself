@@ -14,6 +14,10 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
@@ -23,7 +27,7 @@ export async function GET() {
         studentId: session.user.id,
         type: "SINGLE_DAY",
         completionPercent: { lt: 100 },
-        date: { lt: today },
+        date: { gte: yesterday, lt: today },
       },
       orderBy: { date: "asc" },
     });

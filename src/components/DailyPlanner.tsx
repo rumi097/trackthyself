@@ -253,8 +253,10 @@ export function DailyPlanner() {
     return format(d, "h:mm a");
   };
 
+  const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
+
   const daySpecificTasks = tasks
-    .filter((t) => t.type === "SINGLE_DAY" && t.date && t.date.startsWith(selectedDate))
+    .filter((t) => t.type === "SINGLE_DAY" && t.date && toDateKey(t.date) === selectedDate)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const weeklyTasksToday = tasks

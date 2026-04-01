@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Circle } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { CheckCircle2, Circle, ChevronLeft, ChevronRight } from "lucide-react";
+import { eachDayOfInterval, format } from "date-fns";
 
 type Task = {
   id: string;
@@ -24,23 +24,55 @@ export default function TodayRoutine() {
   const [allDailyTasks, setAllDailyTasks] = useState<Task[]>([]);
   const [percentage, setPercentage] = useState(0);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [selectedMonthKey, setSelectedMonthKey] = useState(format(new Date(), "yyyy-MM"));
   const [isLoading, setIsLoading] = useState(true);
 
-  const dateWindow = Array.from({ length: 14 }, (_, i) => format(subDays(new Date(), i), "yyyy-MM-dd")).reverse();
+  const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
+
+  const dailyTaskDateKeys = Array.from(
+    new Set(allDailyTasks.map((task) => toDateKey(task.date)).filter(Boolean))
+  ).sort();
+
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const calendarStart = dailyTaskDateKeys.length > 0 ? new Date(dailyTaskDateKeys[0]) : new Date();
+  const calendarEnd = new Date(todayKey);
+
+  const dateWindow = eachDayOfInterval({ start: calendarStart, end: calendarEnd }).map((d) =>
+    format(d, "yyyy-MM-dd")
+  );
+
+  const monthOptions = Array.from(new Set(dateWindow.map((d) => d.slice(0, 7)))).sort();
+  const filteredDateWindow = dateWindow.filter((d) => d.startsWith(selectedMonthKey));
+
+  const setMonthAndFocusDate = (monthKey: string) => {
+    setSelectedMonthKey(monthKey);
+    const lastDateOfMonth = dateWindow.filter((d) => d.startsWith(monthKey)).slice(-1)[0];
+    if (lastDateOfMonth) setSelectedDate(lastDateOfMonth);
+  };
+
+  const currentMonthIndex = monthOptions.indexOf(selectedMonthKey);
+  const hasPrevMonth = currentMonthIndex > 0;
+  const hasNextMonth = currentMonthIndex >= 0 && currentMonthIndex < monthOptions.length - 1;
+
+  useEffect(() => {
+    if (monthOptions.length === 0) return;
+    if (!monthOptions.includes(selectedMonthKey)) {
+      setSelectedMonthKey(monthOptions[0]);
+    }
+  }, [monthOptions, selectedMonthKey]);
 
   const fetchTasks = async () => {
     setIsLoading(true);
     try {
-      const [todayRes, allRes] = await Promise.all([
-        fetch("/api/student/dashboard/today", { cache: "no-store" }),
-        fetch("/api/student/tasks/all", { cache: "no-store" }),
-      ]);
+      const todayRes = await fetch("/api/student/dashboard/today", { cache: "no-store" });
 
       if (todayRes.ok) {
         const data = await todayRes.json();
         setTasks(data.tasks);
         setPercentage(data.percentage);
       }
+
+      const allRes = await fetch("/api/student/tasks/all", { cache: "no-store" });
 
       if (allRes.ok) {
         const data: Task[] = await allRes.json();
@@ -100,15 +132,15 @@ export default function TodayRoutine() {
     await updateTaskPercent(id, currentPercent >= 100 ? 0 : 100);
   };
 
-  const getDateProgress = (dateKey: string) => {
-    const dateTasks = allDailyTasks.filter((task) => task.date && task.date.startsWith(dateKey));
+  const getDateProgress = (targetDateKey: string) => {
+    const dateTasks = allDailyTasks.filter((task) => targetDateKey === toDateKey(task.date));
     if (dateTasks.length === 0) return null;
     const totalPercent = dateTasks.reduce((acc, task) => acc + (task.completionPercent || 0), 0);
     return Math.round(totalPercent / dateTasks.length);
   };
 
   const selectedDateTasks = allDailyTasks
-    .filter((task) => task.date && task.date.startsWith(selectedDate))
+    .filter((task) => toDateKey(task.date) === selectedDate)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   if (isLoading) return <div className="animate-pulse h-32 bg-gray-700/50 rounded-xl mt-4"></div>;
@@ -185,9 +217,42 @@ export default function TodayRoutine() {
       </div>
 
       <div className="mt-8 rounded-xl bg-gray-800 p-6 shadow-md">
-        <h3 className="text-lg font-bold mb-4">Progress Calendar</h3>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-lg font-bold">Progress Calendar</h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => hasPrevMonth && setMonthAndFocusDate(monthOptions[currentMonthIndex - 1])}
+              disabled={!hasPrevMonth}
+              className="rounded-md border border-gray-700 bg-gray-900 p-2 text-gray-200 disabled:opacity-40"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <select
+              value={selectedMonthKey}
+              onChange={(e) => setMonthAndFocusDate(e.target.value)}
+              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-200 outline-none"
+            >
+              {monthOptions.map((monthKey) => (
+                <option key={monthKey} value={monthKey}>
+                  {format(new Date(`${monthKey}-01`), "MMMM yyyy")}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => hasNextMonth && setMonthAndFocusDate(monthOptions[currentMonthIndex + 1])}
+              disabled={!hasNextMonth}
+              className="rounded-md border border-gray-700 bg-gray-900 p-2 text-gray-200 disabled:opacity-40"
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-4 md:grid-cols-7 gap-2 mb-6">
-          {dateWindow.map((dateKey) => {
+          {filteredDateWindow.map((dateKey) => {
             const progress = getDateProgress(dateKey);
             const isActive = selectedDate === dateKey;
             return (

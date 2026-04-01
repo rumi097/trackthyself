@@ -82,41 +82,6 @@ export async function PATCH(
       where: { id: taskId },
     });
 
-    if (task && task.type === "SINGLE_DAY" && task.date && task.completionPercent < 100) {
-      const nextDayStart = new Date(task.date);
-      nextDayStart.setDate(nextDayStart.getDate() + 1);
-      nextDayStart.setHours(0, 0, 0, 0);
-
-      const nextDayEnd = new Date(nextDayStart);
-      nextDayEnd.setHours(23, 59, 59, 999);
-
-      const existingNextDay = await prisma.task.findFirst({
-        where: {
-          studentId: session.user.id,
-          type: "SINGLE_DAY",
-          title: task.title,
-          chapterId: task.chapterId,
-          date: { gte: nextDayStart, lte: nextDayEnd },
-        },
-      });
-
-      if (!existingNextDay) {
-        await prisma.task.create({
-          data: {
-            studentId: task.studentId,
-            title: task.title,
-            chapterId: task.chapterId,
-            type: "SINGLE_DAY",
-            date: nextDayStart,
-            startTime: task.startTime,
-            endTime: task.endTime,
-            completionPercent: task.completionPercent,
-            isCompleted: false,
-          },
-        });
-      }
-    }
-
     return NextResponse.json(task);
   } catch {
     return new NextResponse("Internal server error", { status: 500 });
