@@ -15,6 +15,7 @@ type PlannerTask = {
   title: string;
   type: "SINGLE_DAY" | "WEEKLY_RECURRING";
   date?: string;
+  createdAt?: string;
   dayOfWeek?: number;
   startTime: string;
   endTime: string;
@@ -258,6 +259,14 @@ export function DailyPlanner() {
 
   const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
 
+  const getCarryFromLabel = (task: PlannerTask, targetDateKey: string) => {
+    if (task.type !== "SINGLE_DAY") return null;
+    if (toDateKey(task.date) !== targetDateKey) return null;
+    const createdKey = toDateKey(task.createdAt);
+    if (!createdKey || createdKey >= targetDateKey) return null;
+    return `From ${format(new Date(task.createdAt as string), "EEE, MMM d")}`;
+  };
+
   const daySpecificTasks = tasks
     .filter((t) => t.type === "SINGLE_DAY" && t.date && toDateKey(t.date) === selectedDate)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -461,7 +470,14 @@ export function DailyPlanner() {
                    </button>
                    
                    <div className="flex-1 ml-2">
-                     <h4 className={`text-lg font-bold ${task.completionPercent >= 100 ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                     <div className="flex items-center gap-2">
+                       <h4 className={`text-lg font-bold ${task.completionPercent >= 100 ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                       {getCarryFromLabel(task, selectedDate) && (
+                         <span className="rounded-full border border-amber-400/40 bg-amber-900/30 px-2 py-0.5 text-[11px] text-amber-200">
+                           {getCarryFromLabel(task, selectedDate)}
+                         </span>
+                       )}
+                     </div>
                      <p className="text-xs text-cyan-300 mt-1">Completion: {Math.round(task.completionPercent || 0)}%</p>
                      {task.chapter && (
                         <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded text-xs mt-1 inline-block">

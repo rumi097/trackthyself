@@ -9,6 +9,8 @@ type Task = {
   title: string;
   type?: "SINGLE_DAY" | "WEEKLY_RECURRING";
   date?: string;
+  dayOfWeek?: number;
+  createdAt?: string;
   startTime: string;
   endTime: string;
   completionPercent: number;
@@ -20,14 +22,15 @@ type Task = {
 };
 
 export default function TodayRoutine() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [allDailyTasks, setAllDailyTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [percentage, setPercentage] = useState(0);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedMonthKey, setSelectedMonthKey] = useState(format(new Date(), "yyyy-MM"));
   const [isLoading, setIsLoading] = useState(true);
 
   const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
+
+  const allDailyTasks = allTasks.filter((task) => task.type === "SINGLE_DAY" && !!task.date);
 
   const dailyTaskDateKeys = Array.from(
     new Set(allDailyTasks.map((task) => toDateKey(task.date)).filter(Boolean))
@@ -68,7 +71,6 @@ export default function TodayRoutine() {
 
       if (todayRes.ok) {
         const data = await todayRes.json();
-        setTasks(data.tasks);
         setPercentage(data.percentage);
       }
 
@@ -76,7 +78,7 @@ export default function TodayRoutine() {
 
       if (allRes.ok) {
         const data: Task[] = await allRes.json();
-        setAllDailyTasks(data.filter((t) => t.type === "SINGLE_DAY" && !!t.date));
+        setAllTasks(data);
       }
     } catch (e) {
       console.error("Failed to fetch today's tasks", e);
@@ -89,26 +91,28 @@ export default function TodayRoutine() {
     fetchTasks();
   }, []);
 
+  const computeTodayDailyPercentage = (tasksToMeasure: Task[]) => {
+    const todaysDailyTasks = tasksToMeasure.filter(
+      (task) => task.type === "SINGLE_DAY" && toDateKey(task.date) === todayKey
+    );
+    if (todaysDailyTasks.length === 0) return 0;
+    return (
+      todaysDailyTasks.reduce((acc, task) => acc + (task.completionPercent || 0), 0) /
+      todaysDailyTasks.length
+    );
+  };
+
   const updateTaskPercent = async (id: string, nextPercent: number) => {
     const safePercent = Math.max(0, Math.min(100, nextPercent));
-    const previousTasks = tasks;
-    const previousAllDailyTasks = allDailyTasks;
+    const previousAllTasks = allTasks;
     const previousPercentage = percentage;
 
     try {
-      const updatedTasks = tasks.map((t) =>
+      const updatedTasks = allTasks.map((t) =>
         t.id === id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
       );
-      setTasks(updatedTasks);
-      setAllDailyTasks((prev) =>
-        prev.map((t) =>
-          t.id === id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
-        )
-      );
-
-      const total = updatedTasks.length;
-      const avg = total > 0 ? updatedTasks.reduce((acc, t) => acc + (t.completionPercent || 0), 0) / total : 0;
-      setPercentage(avg);
+      setAllTasks(updatedTasks);
+      setPercentage(computeTodayDailyPercentage(updatedTasks));
 
       const res = await fetch(`/api/student/tasks/${id}`, {
         method: "PATCH",
@@ -122,8 +126,7 @@ export default function TodayRoutine() {
     } catch (e) {
       console.error(e);
       // Revert on failure without reloading whole widget
-      setTasks(previousTasks);
-      setAllDailyTasks(previousAllDailyTasks);
+      setAllTasks(previousAllTasks);
       setPercentage(previousPercentage);
     }
   };
@@ -142,6 +145,31 @@ export default function TodayRoutine() {
   const selectedDateTasks = allDailyTasks
     .filter((task) => toDateKey(task.date) === selectedDate)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const todayDailyTasks = allDailyTasks
+    .filter((task) => toDateKey(task.date) === todayKey)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const todayDayOfWeek = new Date().getDay();
+  const todayWeeklyTasks = allTasks
+    .filter((task) => task.type === "WEEKLY_RECURRING" && task.dayOfWeek === todayDayOfWeek)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const formatTime12h = (time24: string) => {
+    if (!time24) return "";
+    const [h, m] = time24.split(":");
+    const d = new Date();
+    d.setHours(parseInt(h, 10), parseInt(m, 10));
+    return format(d, "h:mm a");
+  };
+
+  const getCarryFromLabel = (task: Task) => {
+    if (task.type !== "SINGLE_DAY") return null;
+    if (toDateKey(task.date) !== todayKey) return null;
+    const createdKey = toDateKey(task.createdAt);
+    if (!createdKey || createdKey >= todayKey) return null;
+    return `From ${format(new Date(task.createdAt as string), "EEE, MMM d")}`;
+  };
 
   if (isLoading) return <div className="animate-pulse h-32 bg-gray-700/50 rounded-xl mt-4"></div>;
 
@@ -163,55 +191,139 @@ export default function TodayRoutine() {
           <h2 className="text-2xl font-bold">Today&apos;s Routine</h2>
         </div>
         
-        {tasks.length === 0 ? (
+        {todayWeeklyTasks.length === 0 && todayDailyTasks.length === 0 ? (
           <div className="text-center py-10 text-gray-500">
             <p>Your day is completely free.</p>
             <p className="text-sm mt-2">Go to the Routine planner to add some tasks!</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {tasks.map((task) => (
-              <div 
-                key={task.id} 
-                className={`flex items-center justify-between p-4 rounded-lg border border-gray-700 transition-colors ${
-                  task.completionPercent >= 100 ? "bg-gray-800/50 opacity-60" : "bg-gray-750 hover:border-gray-500"
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <button onClick={() => toggleTask(task.id, task.completionPercent)}>
-                    {task.completionPercent >= 100 ? (
-                      <CheckCircle2 className="w-8 h-8 text-green-500" />
-                    ) : (
-                      <Circle className="w-8 h-8 text-gray-500 hover:text-blue-400" />
-                    )}
-                  </button>
-                  <div>
-                    <h3 className={`text-lg font-semibold ${task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"}`}>
-                      {task.title}
-                    </h3>
-                    <p className="text-sm text-gray-400">
-                      {task.startTime} - {task.endTime}
-                      {task.chapter && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-900/40 text-blue-300">
-                          {task.chapter.subject.name}: {task.chapter.name}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-cyan-300 mt-1">Completion: {Math.round(task.completionPercent || 0)}%</p>
-                  </div>
-                </div>
-                <div className="w-28">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(task.completionPercent || 0)}
-                    onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
-                    className="w-full"
-                  />
+          <div className="space-y-8">
+            {todayWeeklyTasks.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold mb-4 text-purple-400 border-b border-gray-700 pb-2">
+                  Weekly Goals Linked to Today
+                </h3>
+                <div className="grid grid-cols-1 gap-3">
+                  {todayWeeklyTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={`p-3 flex gap-3 border rounded-lg transition items-center ${
+                        task.completionPercent >= 100
+                          ? "bg-green-900/10 border-green-500/30 opacity-75"
+                          : "bg-gray-750 border-gray-600"
+                      }`}
+                    >
+                      <button
+                        onClick={() => toggleTask(task.id, task.completionPercent)}
+                        className="shrink-0 text-gray-400 hover:text-green-400 transition"
+                      >
+                        {task.completionPercent >= 100 ? (
+                          <CheckCircle2 className="w-6 h-6 text-green-500" />
+                        ) : (
+                          <Circle className="w-6 h-6" />
+                        )}
+                      </button>
+                      <div className="flex-1">
+                        <h4
+                          className={`font-semibold ${
+                            task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"
+                          }`}
+                        >
+                          {task.title}
+                        </h4>
+                        <p className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</p>
+                        {task.chapter && (
+                          <div className="text-xs text-blue-300 mt-1">
+                            {task.chapter.subject.name}: {task.chapter.name}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(task.completionPercent || 0)}
+                        onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
+                        className="w-24"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
+
+            <div>
+              <h3 className="text-xl font-bold mb-6 text-green-400">
+                Timetable for {format(new Date(todayKey), "MMM d, yyyy")}
+              </h3>
+
+              {todayDailyTasks.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">Your schedule is cleared for today.</div>
+              ) : (
+                <div className="space-y-4">
+                  {todayDailyTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={`p-4 flex gap-4 border rounded-xl transition items-center ${
+                        task.completionPercent >= 100
+                          ? "bg-green-900/10 border-green-500/30 opacity-75"
+                          : "bg-gray-750 hover:bg-gray-700 border-gray-600"
+                      }`}
+                    >
+                      <div className="shrink-0 text-center justify-center items-center flex flex-col font-mono bg-gray-900 border border-gray-600 p-3 rounded-lg text-sm min-w-28 text-orange-200">
+                        <span>{formatTime12h(task.startTime)}</span>
+                        <span className="text-gray-500 text-xs my-0.5">to</span>
+                        <span>{formatTime12h(task.endTime)}</span>
+                      </div>
+
+                      <button
+                        onClick={() => toggleTask(task.id, task.completionPercent)}
+                        className="ml-2 shrink-0 text-gray-400 hover:text-green-400 transition"
+                      >
+                        {task.completionPercent >= 100 ? (
+                          <CheckCircle2 className="w-8 h-8 text-green-500" />
+                        ) : (
+                          <Circle className="w-8 h-8" />
+                        )}
+                      </button>
+
+                      <div className="flex-1 ml-2">
+                        <div className="flex items-center gap-2">
+                          <h4
+                            className={`text-lg font-bold ${
+                              task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"
+                            }`}
+                          >
+                            {task.title}
+                          </h4>
+                          {getCarryFromLabel(task) && (
+                            <span className="rounded-full border border-amber-400/40 bg-amber-900/30 px-2 py-0.5 text-[11px] text-amber-200">
+                              {getCarryFromLabel(task)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-cyan-300 mt-1">
+                          Completion: {Math.round(task.completionPercent || 0)}%
+                        </p>
+                        {task.chapter && (
+                          <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded text-xs mt-1 inline-block">
+                            {task.chapter.subject.name}: {task.chapter.name}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(task.completionPercent || 0)}
+                        onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
+                        className="w-24"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -286,7 +398,14 @@ export default function TodayRoutine() {
                     )}
                   </button>
                   <div>
-                    <p className={`font-medium ${task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"}`}>{task.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-medium ${task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"}`}>{task.title}</p>
+                      {getCarryFromLabel(task) && (
+                        <span className="rounded-full border border-amber-400/40 bg-amber-900/30 px-2 py-0.5 text-[11px] text-amber-200">
+                          {getCarryFromLabel(task)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400">{task.startTime} - {task.endTime}</p>
                     <p className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</p>
                   </div>
