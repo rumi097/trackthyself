@@ -28,7 +28,12 @@ export default function TodayRoutine() {
   const [selectedMonthKey, setSelectedMonthKey] = useState(format(new Date(), "yyyy-MM"));
   const [isLoading, setIsLoading] = useState(true);
 
-  const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
+  const toDateKey = (dateValue?: string) => {
+    if (!dateValue) return "";
+    // Keep date bucketing stable across timezones for ISO datetime strings.
+    if (dateValue.includes("T")) return dateValue.slice(0, 10);
+    return dateValue;
+  };
 
   const allDailyTasks = allTasks.filter((task) => task.type === "SINGLE_DAY" && !!task.date);
 
@@ -69,9 +74,8 @@ export default function TodayRoutine() {
     try {
       const todayRes = await fetch("/api/student/dashboard/today", { cache: "no-store" });
 
-      if (todayRes.ok) {
-        const data = await todayRes.json();
-        setPercentage(data.percentage);
+      if (!todayRes.ok) {
+        throw new Error("Failed to prepare today's task list");
       }
 
       const allRes = await fetch("/api/student/tasks/all", { cache: "no-store" });
@@ -79,6 +83,7 @@ export default function TodayRoutine() {
       if (allRes.ok) {
         const data: Task[] = await allRes.json();
         setAllTasks(data);
+        setPercentage(computeTodayDailyPercentage(data));
       }
     } catch (e) {
       console.error("Failed to fetch today's tasks", e);
