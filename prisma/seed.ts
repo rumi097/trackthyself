@@ -6,22 +6,6 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Seeding database...')
 
-  await prisma.subject.upsert({
-    where: { id: 'physics-1' },
-    update: {},
-    create: {
-      id: 'physics-1',
-      name: 'Physics 1st Paper',
-      isDefault: true,
-      chapters: {
-        create: [
-          { name: 'Physical World and Measurement', isDefault: true, order: 1 },
-          { name: 'Vector', isDefault: true, order: 2 },
-        ]
-      }
-    }
-  })
-
   const adminPassword = await bcrypt.hash('adminpass', 10)
   const student1Password = await bcrypt.hash('password123', 10)
   const student2Password = await bcrypt.hash('password456', 10)
