@@ -72,6 +72,7 @@ model Task {
   date          DateTime?
   startTime     String         
   endTime       String         
+  completionPercent Float      @default(0)
   isCompleted   Boolean        @default(false)
   createdAt     DateTime       @default(now())
   focusSessions FocusSession[] 

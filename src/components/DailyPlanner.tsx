@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Clock, CalendarDays, CheckCircle, Circle } from "lucide-react";
+import { Plus, Trash2, Clock, CalendarDays, CheckCircle, Circle, Pencil } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 type SubjectItem = {
@@ -18,6 +18,7 @@ type PlannerTask = {
   dayOfWeek?: number;
   startTime: string;
   endTime: string;
+  completionPercent: number;
   isCompleted: boolean;
   chapter?: {
     id: string;
@@ -47,6 +48,9 @@ export function DailyPlanner() {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newChapterName, setNewChapterName] = useState("");
   const [targetSubjectId, setTargetSubjectId] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingStartTime, setEditingStartTime] = useState("");
+  const [editingEndTime, setEditingEndTime] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -133,15 +137,19 @@ export function DailyPlanner() {
     }
   };
 
-  const handleToggleComplete = async (task: PlannerTask) => {
-    const updatedStatus = !task.isCompleted;
+  const handleUpdateCompletion = async (task: PlannerTask, nextPercent: number) => {
+    const safePercent = Math.max(0, Math.min(100, nextPercent));
     const previousTasks = tasks;
-    setTasks(tasks.map(t => t.id === task.id ? { ...t, isCompleted: updatedStatus } : t));
+    setTasks(
+      tasks.map((t) =>
+        t.id === task.id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
+      )
+    );
     try {
       const res = await fetch(`/api/student/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: updatedStatus })
+        body: JSON.stringify({ completionPercent: safePercent })
       });
       if (!res.ok) {
         throw new Error("Failed to update task status");
@@ -150,6 +158,10 @@ export function DailyPlanner() {
       console.error(e);
       setTasks(previousTasks);
     }
+  };
+
+  const handleToggleComplete = async (task: PlannerTask) => {
+    await handleUpdateCompletion(task, task.completionPercent >= 100 ? 0 : 100);
   };
 
   const handleAddSyllabus = async (e: React.FormEvent) => {
@@ -182,6 +194,51 @@ export function DailyPlanner() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const beginEditTaskTime = (task: PlannerTask) => {
+    setEditingTaskId(task.id);
+    setEditingStartTime(task.startTime);
+    setEditingEndTime(task.endTime);
+  };
+
+  const cancelEditTaskTime = () => {
+    setEditingTaskId(null);
+    setEditingStartTime("");
+    setEditingEndTime("");
+  };
+
+  const saveTaskTime = async (task: PlannerTask) => {
+    if (!editingStartTime || !editingEndTime) return;
+
+    const previousTasks = tasks;
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id ? { ...t, startTime: editingStartTime, endTime: editingEndTime } : t
+      )
+    );
+
+    try {
+      const res = await fetch(`/api/student/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startTime: editingStartTime,
+          endTime: editingEndTime,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update task time");
+      }
+
+      setEditingTaskId(null);
+      setEditingStartTime("");
+      setEditingEndTime("");
+    } catch (e) {
+      console.error(e);
+      setTasks(previousTasks);
     }
   };
 
@@ -328,18 +385,27 @@ export function DailyPlanner() {
             <h2 className="text-lg font-bold mb-4 text-purple-400 border-b border-gray-700 pb-2">Weekly Goals Linked to Today</h2>
             <div className="grid grid-cols-1 gap-3">
               {weeklyTasksToday.map((task) => (
-                 <div key={task.id} className={`p-3 flex gap-3 border rounded-lg transition items-center ${task.isCompleted ? 'bg-green-900/10 border-green-500/30 opacity-75' : 'bg-gray-750 border-gray-600'}`}>
+                 <div key={task.id} className={`p-3 flex gap-3 border rounded-lg transition items-center ${task.completionPercent >= 100 ? 'bg-green-900/10 border-green-500/30 opacity-75' : 'bg-gray-750 border-gray-600'}`}>
                    <button onClick={() => handleToggleComplete(task)} className="flex-shrink-0 text-gray-400 hover:text-green-400 transition">
-                     {task.isCompleted ? <CheckCircle className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6" />}
+                     {task.completionPercent >= 100 ? <CheckCircle className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6" />}
                    </button>
                    <div className="flex-1">
-                     <h4 className={`font-semibold ${task.isCompleted ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                     <h4 className={`font-semibold ${task.completionPercent >= 100 ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                     <p className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</p>
                      {task.chapter && (
                         <div className="text-xs text-blue-300 mt-1">
                           {task.chapter.subject.name}: {task.chapter.name}
                         </div>
                      )}
                    </div>
+                   <input
+                     type="range"
+                     min={0}
+                     max={100}
+                     value={Math.round(task.completionPercent || 0)}
+                     onChange={(e) => handleUpdateCompletion(task, Number(e.target.value))}
+                     className="w-24"
+                   />
                  </div>
               ))}
             </div>
@@ -358,25 +424,68 @@ export function DailyPlanner() {
         ) : (
           <div className="space-y-4">
              {daySpecificTasks.map((task) => (
-                <div key={task.id} className={`p-4 flex gap-4 border rounded-xl transition items-center ${task.isCompleted ? 'bg-green-900/10 border-green-500/30 opacity-75' : 'bg-gray-750 hover:bg-gray-700 border-gray-600'}`}>
+               <div key={task.id} className={`p-4 flex gap-4 border rounded-xl transition items-center ${task.completionPercent >= 100 ? 'bg-green-900/10 border-green-500/30 opacity-75' : 'bg-gray-750 hover:bg-gray-700 border-gray-600'}`}>
                    <div className="flex-shrink-0 text-center justify-center items-center flex flex-col font-mono bg-gray-900 border border-gray-600 p-3 rounded-lg text-sm min-w-28 text-orange-200">
-                     <span>{formatTime12h(task.startTime)}</span>
-                     <span className="text-gray-500 text-xs my-0.5">to</span>
-                     <span>{formatTime12h(task.endTime)}</span>
+                     {editingTaskId === task.id ? (
+                      <div className="space-y-1">
+                        <input
+                          type="time"
+                          value={editingStartTime}
+                          onChange={(e) => setEditingStartTime(e.target.value)}
+                          className="w-full bg-gray-800 rounded px-1 py-0.5 text-xs outline-none"
+                        />
+                        <span className="block text-gray-500 text-xs">to</span>
+                        <input
+                          type="time"
+                          value={editingEndTime}
+                          onChange={(e) => setEditingEndTime(e.target.value)}
+                          className="w-full bg-gray-800 rounded px-1 py-0.5 text-xs outline-none"
+                        />
+                      </div>
+                     ) : (
+                      <>
+                        <span>{formatTime12h(task.startTime)}</span>
+                        <span className="text-gray-500 text-xs my-0.5">to</span>
+                        <span>{formatTime12h(task.endTime)}</span>
+                      </>
+                     )}
                    </div>
                    
                    <button onClick={() => handleToggleComplete(task)} className="ml-2 flex-shrink-0 text-gray-400 hover:text-green-400 transition">
-                     {task.isCompleted ? <CheckCircle className="w-8 h-8 text-green-500" /> : <Circle className="w-8 h-8" />}
+                     {task.completionPercent >= 100 ? <CheckCircle className="w-8 h-8 text-green-500" /> : <Circle className="w-8 h-8" />}
                    </button>
                    
                    <div className="flex-1 ml-2">
-                     <h4 className={`text-lg font-bold ${task.isCompleted ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                     <h4 className={`text-lg font-bold ${task.completionPercent >= 100 ? 'line-through text-gray-500' : 'text-white'}`}>{task.title}</h4>
+                     <p className="text-xs text-cyan-300 mt-1">Completion: {Math.round(task.completionPercent || 0)}%</p>
                      {task.chapter && (
                         <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded text-xs mt-1 inline-block">
                           {task.chapter.subject.name}: {task.chapter.name}
                         </span>
                      )}
                    </div>
+                   <input
+                     type="range"
+                     min={0}
+                     max={100}
+                     value={Math.round(task.completionPercent || 0)}
+                     onChange={(e) => handleUpdateCompletion(task, Number(e.target.value))}
+                     className="w-24"
+                   />
+                     {editingTaskId === task.id ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => saveTaskTime(task)} className="text-emerald-300 hover:text-emerald-200 bg-emerald-500/10 p-2 rounded-md">
+                          Save
+                        </button>
+                        <button onClick={cancelEditTaskTime} className="text-gray-300 hover:text-white bg-gray-600/30 p-2 rounded-md">
+                          Cancel
+                        </button>
+                      </div>
+                     ) : (
+                      <button onClick={() => beginEditTaskTime(task)} className="text-blue-400 hover:text-blue-300 bg-blue-500/10 p-2 rounded-md">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                     )}
                    <button onClick={() => handleDeleteTask(task.id)} className="text-red-500 hover:text-red-400 bg-red-500/10 p-2 rounded-md">
                      <Trash2 className="w-5 h-5" />
                    </button>

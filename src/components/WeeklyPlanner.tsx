@@ -14,6 +14,7 @@ type WeeklyTask = {
   title: string;
   type: "WEEKLY_RECURRING" | "SINGLE_DAY";
   dayOfWeek?: number;
+  completionPercent: number;
   isCompleted: boolean;
   chapter?: {
     id: string;
@@ -140,15 +141,19 @@ export function WeeklyPlanner() {
     }
   };
 
-  const handleToggleComplete = async (task: WeeklyTask) => {
-    const updatedStatus = !task.isCompleted;
+  const handleUpdateCompletion = async (task: WeeklyTask, nextPercent: number) => {
+    const safePercent = Math.max(0, Math.min(100, nextPercent));
     const previousTasks = tasks;
-    setTasks(tasks.map(t => t.id === task.id ? { ...t, isCompleted: updatedStatus } : t));
+    setTasks(
+      tasks.map((t) =>
+        t.id === task.id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
+      )
+    );
     try {
       const res = await fetch(`/api/student/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: updatedStatus })
+        body: JSON.stringify({ completionPercent: safePercent })
       });
       if (!res.ok) {
         throw new Error("Failed to update task status");
@@ -157,6 +162,10 @@ export function WeeklyPlanner() {
       console.error(e);
       setTasks(previousTasks);
     }
+  };
+
+  const handleToggleComplete = async (task: WeeklyTask) => {
+    await handleUpdateCompletion(task, task.completionPercent >= 100 ? 0 : 100);
   };
 
   const handleAddSyllabus = async (e: React.FormEvent) => {
@@ -314,16 +323,25 @@ export function WeeklyPlanner() {
                 ) : (
                   <ul className="space-y-2">
                      {dayTasks.map(task => (
-                       <li key={task.id} className={`flex justify-between items-center text-sm p-2 rounded border border-transparent transition ${task.isCompleted ? 'bg-green-900/20 border-green-500/30 opacity-70' : 'bg-gray-800'}`}>
+                       <li key={task.id} className={`flex justify-between items-center text-sm p-2 rounded border border-transparent transition ${task.completionPercent >= 100 ? 'bg-green-900/20 border-green-500/30 opacity-70' : 'bg-gray-800'}`}>
                          <div className="flex items-start gap-3">
                            <button onClick={() => handleToggleComplete(task)} className="mt-0.5 text-gray-400 hover:text-green-400 transition">
-                             {task.isCompleted ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
+                             {task.completionPercent >= 100 ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
                            </button>
                            <div>
-                             <span className={`font-medium ${task.isCompleted ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+                             <span className={`font-medium ${task.completionPercent >= 100 ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+                             <div className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</div>
                              {task.chapter && <div className="text-xs text-blue-300 mt-0.5">{task.chapter.subject.name}: {task.chapter.name}</div>}
                            </div>
                          </div>
+                         <input
+                           type="range"
+                           min={0}
+                           max={100}
+                           value={Math.round(task.completionPercent || 0)}
+                           onChange={(e) => handleUpdateCompletion(task, Number(e.target.value))}
+                           className="w-24"
+                         />
                          <button onClick={() => handleDeleteTask(task.id)} className="text-red-400/50 hover:text-red-400 ml-2">
                            <Trash2 className="w-4 h-4" />
                          </button>

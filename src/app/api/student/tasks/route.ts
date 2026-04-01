@@ -9,7 +9,11 @@ export async function POST(request: NextRequest) {
     if (!session || !session.user) return new NextResponse("Unauthorized", { status: 401 });
 
     const json = await request.json();
-    const { title, chapterId, type, dayOfWeek, date, startTime, endTime } = json;
+    const { title, chapterId, type, dayOfWeek, date, startTime, endTime, completionPercent } = json;
+    const normalizedPercent =
+      typeof completionPercent === "number"
+        ? Math.min(100, Math.max(0, completionPercent))
+        : 0;
 
     const task = await prisma.task.create({
       data: {
@@ -20,12 +24,14 @@ export async function POST(request: NextRequest) {
         dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : null,
         date: date ? new Date(date) : null,
         startTime,
-        endTime
+        endTime,
+        completionPercent: normalizedPercent,
+        isCompleted: normalizedPercent >= 100,
       }
     });
 
     return NextResponse.json(task);
-  } catch (error) {
+  } catch {
     return new NextResponse("Internal server error", { status: 500 });
   }
 }

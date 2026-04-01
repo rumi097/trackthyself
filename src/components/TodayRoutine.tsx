@@ -11,6 +11,7 @@ type Task = {
   date?: string;
   startTime: string;
   endTime: string;
+  completionPercent: number;
   isCompleted: boolean;
   chapter?: {
     name: string;
@@ -56,25 +57,31 @@ export default function TodayRoutine() {
     fetchTasks();
   }, []);
 
-  const toggleTask = async (id: string, currentStatus: boolean) => {
+  const updateTaskPercent = async (id: string, nextPercent: number) => {
+    const safePercent = Math.max(0, Math.min(100, nextPercent));
     const previousTasks = tasks;
     const previousAllDailyTasks = allDailyTasks;
     const previousPercentage = percentage;
 
     try {
-      // Optimistic update
-      const updatedTasks = tasks.map(t => t.id === id ? { ...t, isCompleted: !currentStatus } : t);
+      const updatedTasks = tasks.map((t) =>
+        t.id === id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
+      );
       setTasks(updatedTasks);
-      setAllDailyTasks((prev) => prev.map((t) => (t.id === id ? { ...t, isCompleted: !currentStatus } : t)));
-      
+      setAllDailyTasks((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
+        )
+      );
+
       const total = updatedTasks.length;
-      const completed = updatedTasks.filter(t => t.isCompleted).length;
-      setPercentage(total > 0 ? Math.round((completed / total) * 100) : 0);
+      const avg = total > 0 ? updatedTasks.reduce((acc, t) => acc + (t.completionPercent || 0), 0) / total : 0;
+      setPercentage(avg);
 
       const res = await fetch(`/api/student/tasks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: !currentStatus }),
+        body: JSON.stringify({ completionPercent: safePercent }),
       });
 
       if (!res.ok) {
@@ -89,11 +96,15 @@ export default function TodayRoutine() {
     }
   };
 
+  const toggleTask = async (id: string, currentPercent: number) => {
+    await updateTaskPercent(id, currentPercent >= 100 ? 0 : 100);
+  };
+
   const getDateProgress = (dateKey: string) => {
     const dateTasks = allDailyTasks.filter((task) => task.date && task.date.startsWith(dateKey));
     if (dateTasks.length === 0) return null;
-    const completed = dateTasks.filter((task) => task.isCompleted).length;
-    return Math.round((completed / dateTasks.length) * 100);
+    const totalPercent = dateTasks.reduce((acc, task) => acc + (task.completionPercent || 0), 0);
+    return Math.round(totalPercent / dateTasks.length);
   };
 
   const selectedDateTasks = allDailyTasks
@@ -131,19 +142,19 @@ export default function TodayRoutine() {
               <div 
                 key={task.id} 
                 className={`flex items-center justify-between p-4 rounded-lg border border-gray-700 transition-colors ${
-                  task.isCompleted ? "bg-gray-800/50 opacity-60" : "bg-gray-750 hover:border-gray-500"
+                  task.completionPercent >= 100 ? "bg-gray-800/50 opacity-60" : "bg-gray-750 hover:border-gray-500"
                 }`}
               >
                 <div className="flex items-center gap-4">
-                  <button onClick={() => toggleTask(task.id, task.isCompleted)}>
-                    {task.isCompleted ? (
+                  <button onClick={() => toggleTask(task.id, task.completionPercent)}>
+                    {task.completionPercent >= 100 ? (
                       <CheckCircle2 className="w-8 h-8 text-green-500" />
                     ) : (
                       <Circle className="w-8 h-8 text-gray-500 hover:text-blue-400" />
                     )}
                   </button>
                   <div>
-                    <h3 className={`text-lg font-semibold ${task.isCompleted ? "line-through text-gray-500" : "text-white"}`}>
+                    <h3 className={`text-lg font-semibold ${task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"}`}>
                       {task.title}
                     </h3>
                     <p className="text-sm text-gray-400">
@@ -154,7 +165,18 @@ export default function TodayRoutine() {
                         </span>
                       )}
                     </p>
+                    <p className="text-xs text-cyan-300 mt-1">Completion: {Math.round(task.completionPercent || 0)}%</p>
                   </div>
+                </div>
+                <div className="w-28">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(task.completionPercent || 0)}
+                    onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
+                    className="w-full"
+                  />
                 </div>
               </div>
             ))}
@@ -191,18 +213,27 @@ export default function TodayRoutine() {
             {selectedDateTasks.map((task) => (
               <div key={task.id} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-900/50 p-3">
                 <div className="flex items-center gap-3">
-                  <button onClick={() => toggleTask(task.id, task.isCompleted)}>
-                    {task.isCompleted ? (
+                  <button onClick={() => toggleTask(task.id, task.completionPercent)}>
+                    {task.completionPercent >= 100 ? (
                       <CheckCircle2 className="w-6 h-6 text-green-500" />
                     ) : (
                       <Circle className="w-6 h-6 text-gray-500 hover:text-blue-400" />
                     )}
                   </button>
                   <div>
-                    <p className={`font-medium ${task.isCompleted ? "line-through text-gray-500" : "text-white"}`}>{task.title}</p>
+                    <p className={`font-medium ${task.completionPercent >= 100 ? "line-through text-gray-500" : "text-white"}`}>{task.title}</p>
                     <p className="text-xs text-gray-400">{task.startTime} - {task.endTime}</p>
+                    <p className="text-xs text-cyan-300">{Math.round(task.completionPercent || 0)}%</p>
                   </div>
                 </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(task.completionPercent || 0)}
+                  onChange={(e) => updateTaskPercent(task.id, Number(e.target.value))}
+                  className="w-24"
+                />
               </div>
             ))}
           </div>
