@@ -33,7 +33,7 @@ export function DailyPlanner() {
   const [loading, setLoading] = useState(true);
 
   // Daily Form State
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("16:00");
   const [endTime, setEndTime] = useState("17:30");
@@ -69,6 +69,7 @@ export function DailyPlanner() {
     if (!title || !startTime || !endTime) return;
     setIsSubmitting(true);
     const selectedDayOfWeek = new Date(selectedDate).getDay();
+    const linkKey = alsoAddWeekly ? (crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) : null;
 
     try {
       const dailyRes = await fetch("/api/student/tasks", {
@@ -77,6 +78,7 @@ export function DailyPlanner() {
         body: JSON.stringify({
           title,
           chapterId: chapterId || null,
+          linkKey,
           type: "SINGLE_DAY",
           date: new Date(selectedDate).toISOString(),
           startTime,
@@ -93,6 +95,7 @@ export function DailyPlanner() {
           body: JSON.stringify({
             title,
             chapterId: chapterId || null,
+            linkKey,
             type: "WEEKLY_RECURRING",
             dayOfWeek: selectedDayOfWeek,
             startTime,

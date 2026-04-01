@@ -69,6 +69,9 @@ export async function PATCH(
       return new NextResponse("Invalid payload", { status: 400 });
     }
 
+    const hasCompletionUpdate =
+      typeof completionPercent === "number" || typeof isCompleted === "boolean";
+
     const result = await prisma.task.updateMany({
       where: { id: taskId, studentId: session.user.id },
       data: updateData,
@@ -81,6 +84,20 @@ export async function PATCH(
     const task = await prisma.task.findUnique({
       where: { id: taskId },
     });
+
+    if (task && hasCompletionUpdate && task.linkKey) {
+      await prisma.task.updateMany({
+        where: {
+          studentId: session.user.id,
+          linkKey: task.linkKey,
+          id: { not: task.id },
+        },
+        data: {
+          completionPercent: task.completionPercent,
+          isCompleted: task.isCompleted,
+        },
+      });
+    }
 
     return NextResponse.json(task);
   } catch {

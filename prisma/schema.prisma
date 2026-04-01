@@ -67,6 +67,7 @@ model Task {
   title         String
   chapterId     String?
   chapter       Chapter?       @relation(fields: [chapterId], references: [id])
+  linkKey       String?
   type          TaskType
   dayOfWeek     Int?           
   date          DateTime?

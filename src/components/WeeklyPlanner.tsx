@@ -62,6 +62,7 @@ export function WeeklyPlanner() {
     e.preventDefault();
     if (!title) return;
     setIsSubmitting(true);
+    const linkKey = alsoAddDaily ? (crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) : null;
 
     const getNextDateForDay = (targetDay: number) => {
       const now = new Date();
@@ -80,6 +81,7 @@ export function WeeklyPlanner() {
         body: JSON.stringify({
           title,
           chapterId: chapterId || null,
+          linkKey,
           type: "WEEKLY_RECURRING",
           dayOfWeek: Number(dayOfWeek),
           startTime: "00:00", // Broad coverage for weekly assignment
@@ -97,6 +99,7 @@ export function WeeklyPlanner() {
           body: JSON.stringify({
             title,
             chapterId: chapterId || null,
+            linkKey,
             type: "SINGLE_DAY",
             date: nextDate.toISOString(),
             startTime: "00:00",

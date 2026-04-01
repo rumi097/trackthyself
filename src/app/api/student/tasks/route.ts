@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     if (!session || !session.user) return new NextResponse("Unauthorized", { status: 401 });
 
     const json = await request.json();
-    const { title, chapterId, type, dayOfWeek, date, startTime, endTime, completionPercent } = json;
+    const { title, chapterId, type, dayOfWeek, date, startTime, endTime, completionPercent, linkKey } = json;
     const normalizedPercent =
       typeof completionPercent === "number"
         ? Math.min(100, Math.max(0, completionPercent))
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
         studentId: session.user.id,
         title,
         chapterId: chapterId || null,
+        linkKey: typeof linkKey === "string" && linkKey.trim() ? linkKey.trim() : null,
         type,
         dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : null,
         date: date ? new Date(date) : null,
