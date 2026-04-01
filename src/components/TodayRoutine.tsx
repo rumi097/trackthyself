@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Circle, ChevronLeft, ChevronRight } from "lucide-react";
-import { eachDayOfInterval, format } from "date-fns";
+import { eachDayOfInterval, format, parseISO } from "date-fns";
 
 type Task = {
   id: string;
@@ -30,9 +30,11 @@ export default function TodayRoutine() {
 
   const toDateKey = (dateValue?: string) => {
     if (!dateValue) return "";
-    // Keep date bucketing stable across timezones for ISO datetime strings.
-    if (dateValue.includes("T")) return dateValue.slice(0, 10);
-    return dateValue;
+    try {
+      return format(parseISO(dateValue), "yyyy-MM-dd");
+    } catch {
+      return format(new Date(dateValue), "yyyy-MM-dd");
+    }
   };
 
   const allDailyTasks = allTasks.filter((task) => task.type === "SINGLE_DAY" && !!task.date);
@@ -165,10 +167,11 @@ export default function TodayRoutine() {
 
   const getCarryFromLabel = (task: Task) => {
     if (task.type !== "SINGLE_DAY") return null;
-    if (toDateKey(task.date) !== todayKey) return null;
+    const taskDateKey = toDateKey(task.date);
+    if (!taskDateKey) return null;
     const createdKey = toDateKey(task.createdAt);
-    if (!createdKey || createdKey >= todayKey) return null;
-    return `From ${format(new Date(task.createdAt as string), "EEE, MMM d")}`;
+    if (!createdKey || createdKey >= taskDateKey) return null;
+    return `From ${format(parseISO(task.createdAt as string), "EEE, MMM d")}`;
   };
 
   if (isLoading) return <div className="animate-pulse h-32 bg-gray-700/50 rounded-xl mt-4"></div>;
