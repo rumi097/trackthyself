@@ -33,6 +33,7 @@ export function WeeklyPlanner() {
   // Form State
   const [title, setTitle] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState(new Date().getDay());
+  const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -49,6 +50,7 @@ export function WeeklyPlanner() {
       fetch("/api/student/tasks/all", { cache: "no-store" }).then((res) => res.json())
     ]).then(([subs, tsks]) => {
       setSubjects(subs);
+      if (subs.length > 0) setSelectedSubjectId(subs[0].id);
       setTasks(tsks.filter((t: WeeklyTask) => t.type === "WEEKLY_RECURRING"));
       setLoading(false);
     });
@@ -139,6 +141,13 @@ export function WeeklyPlanner() {
       if (res.ok) {
         const updatedSubjects = await res.json();
         setSubjects(updatedSubjects);
+        if (targetSubjectId) {
+          setSelectedSubjectId(targetSubjectId);
+        } else if (newSubjectName) {
+          const created = updatedSubjects.find((s: SubjectItem) => s.name === newSubjectName);
+          if (created) setSelectedSubjectId(created.id);
+        }
+        setChapterId("");
         setShowAddChapter(false);
         setNewSubjectName("");
         setNewChapterName("");
@@ -148,6 +157,8 @@ export function WeeklyPlanner() {
       console.error(e);
     }
   };
+
+  const selectedSubject = subjects.find((s) => s.id === selectedSubjectId);
 
   if (loading) return <div className="text-center py-10">Loading weekly overview...</div>;
 
@@ -200,21 +211,45 @@ export function WeeklyPlanner() {
             </div>
             <div>
               <div className="flex justify-between items-end mb-1">
-                <label className="block text-sm text-gray-400 flex items-center"><BookOpen className="w-4 h-4 mr-1" /> Focus Chapter</label>
-                <button type="button" onClick={() => setShowAddChapter(true)} className="text-xs bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 px-2 py-0.5 rounded transition flex items-center">
+                <label className="text-sm text-gray-400 flex items-center"><BookOpen className="w-4 h-4 mr-1" /> Subject & Chapter</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetSubjectId(selectedSubjectId);
+                    setShowAddChapter(true);
+                  }}
+                  className="text-xs bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 px-2 py-0.5 rounded transition flex items-center"
+                >
                   <Plus className="w-3 h-3 mr-1"/> New
                 </button>
               </div>
-              <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="w-full bg-gray-700 rounded-md p-2 outline-none">
-                <option value="">-- General Overview --</option>
-                {subjects.map((sub) => (
-                  <optgroup key={sub.id} label={sub.name}>
-                    {sub.chapters.map((chap) => (
-                      <option key={chap.id} value={chap.id}>{chap.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => {
+                    setSelectedSubjectId(e.target.value);
+                    setChapterId("");
+                  }}
+                  className="w-full bg-gray-700 rounded-md p-2 outline-none"
+                >
+                  <option value="">-- Select Subject --</option>
+                  {subjects.map((sub) => (
+                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={chapterId}
+                  onChange={(e) => setChapterId(e.target.value)}
+                  disabled={!selectedSubjectId}
+                  className="w-full bg-gray-700 rounded-md p-2 outline-none disabled:opacity-60"
+                >
+                  <option value="">{selectedSubject ? `Full Subject: ${selectedSubject.name}` : "Select subject first"}</option>
+                  {(selectedSubject?.chapters || []).map((chap) => (
+                    <option key={chap.id} value={chap.id}>{chap.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-md font-bold mt-2">
               Assign to Day
