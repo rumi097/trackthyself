@@ -35,6 +35,7 @@ export function WeeklyPlanner() {
   const [dayOfWeek, setDayOfWeek] = useState(new Date().getDay());
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
+  const [alsoAddDaily, setAlsoAddDaily] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -61,8 +62,18 @@ export function WeeklyPlanner() {
     if (!title) return;
     setIsSubmitting(true);
 
+    const getNextDateForDay = (targetDay: number) => {
+      const now = new Date();
+      const currentDay = now.getDay();
+      const diff = (targetDay - currentDay + 7) % 7;
+      const next = new Date(now);
+      next.setDate(now.getDate() + diff);
+      next.setHours(0, 0, 0, 0);
+      return next;
+    };
+
     try {
-      const res = await fetch("/api/student/tasks", {
+      const weeklyRes = await fetch("/api/student/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -75,14 +86,37 @@ export function WeeklyPlanner() {
         }),
       });
 
-      if (res.ok) {
+      let dailyCreated = false;
+
+      if (weeklyRes.ok && alsoAddDaily) {
+        const nextDate = getNextDateForDay(Number(dayOfWeek));
+        const dailyRes = await fetch("/api/student/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            chapterId: chapterId || null,
+            type: "SINGLE_DAY",
+            date: nextDate.toISOString(),
+            startTime: "00:00",
+            endTime: "23:59",
+          }),
+        });
+        dailyCreated = dailyRes.ok;
+      }
+
+      if (weeklyRes.ok) {
         const refreshedTasks = await fetch("/api/student/tasks/all", { cache: "no-store" }).then((r) => r.json());
         setTasks(refreshedTasks.filter((t: WeeklyTask) => t.type === "WEEKLY_RECURRING"));
         setTitle("");
         setChapterId("");
+        setAlsoAddDaily(false);
         
-        // Give success feedback
-        setSuccessMsg(`Task successfully assigned to ${DAYS[dayOfWeek]}!`);
+        setSuccessMsg(
+          dailyCreated
+            ? `Weekly + daily task added for ${DAYS[dayOfWeek]}.`
+            : `Task successfully assigned to ${DAYS[dayOfWeek]}!`
+        );
         setTimeout(() => setSuccessMsg(""), 3000);
       }
     } catch (e) {
@@ -254,6 +288,15 @@ export function WeeklyPlanner() {
             <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-md font-bold mt-2">
               Assign to Day
             </button>
+            <label className="mt-2 flex items-center gap-2 text-sm text-blue-200">
+              <input
+                type="checkbox"
+                checked={alsoAddDaily}
+                onChange={(e) => setAlsoAddDaily(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Also add as daily task for the next {DAYS[dayOfWeek]}
+            </label>
           </form>
         )}
       </div>

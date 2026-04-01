@@ -38,6 +38,7 @@ export function DailyPlanner() {
   const [endTime, setEndTime] = useState("17:30");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
+  const [alsoAddWeekly, setAlsoAddWeekly] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -63,9 +64,10 @@ export function DailyPlanner() {
     e.preventDefault();
     if (!title || !startTime || !endTime) return;
     setIsSubmitting(true);
+    const selectedDayOfWeek = new Date(selectedDate).getDay();
 
     try {
-      const res = await fetch("/api/student/tasks", {
+      const dailyRes = await fetch("/api/student/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,13 +80,36 @@ export function DailyPlanner() {
         }),
       });
 
-      if (res.ok) {
+      let weeklyCreated = false;
+
+      if (dailyRes.ok && alsoAddWeekly) {
+        const weeklyRes = await fetch("/api/student/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            chapterId: chapterId || null,
+            type: "WEEKLY_RECURRING",
+            dayOfWeek: selectedDayOfWeek,
+            startTime,
+            endTime,
+          }),
+        });
+        weeklyCreated = weeklyRes.ok;
+      }
+
+      if (dailyRes.ok) {
         const refreshedTasks = await fetch("/api/student/tasks/all", { cache: "no-store" }).then((r) => r.json());
         setTasks(refreshedTasks);
         setTitle("");
         setChapterId("");
+        setAlsoAddWeekly(false);
         
-        setSuccessMsg(`Task scheduled on ${selectedDate}!`);
+        setSuccessMsg(
+          weeklyCreated
+            ? `Daily + weekly task added for ${selectedDate}.`
+            : `Task scheduled on ${selectedDate}!`
+        );
         setTimeout(() => setSuccessMsg(""), 3000);
       }
     } catch (e) {
@@ -282,6 +307,15 @@ export function DailyPlanner() {
             <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-md font-bold mt-2">
               Schedule Chunk
             </button>
+            <label className="mt-2 flex items-center gap-2 text-sm text-blue-200">
+              <input
+                type="checkbox"
+                checked={alsoAddWeekly}
+                onChange={(e) => setAlsoAddWeekly(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Also add this as weekly recurring task for this weekday
+            </label>
           </form>
         )}
       </div>
