@@ -21,7 +21,7 @@ export async function GET() {
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Carry over all past incomplete daily tasks to today while preserving progress.
+    // Carry forward yesterday's incomplete daily tasks without mutating historical records.
     const pendingCarry = await prisma.task.findMany({
       where: {
         studentId: session.user.id,
@@ -33,11 +33,52 @@ export async function GET() {
     });
 
     if (pendingCarry.length > 0) {
-      await prisma.task.updateMany({
-        where: {
-          id: { in: pendingCarry.map((t) => t.id) },
-        },
-        data: { date: today },
+      await prisma.$transaction(async (tx) => {
+        for (const task of pendingCarry) {
+          const carryLinkKey = task.linkKey?.trim() || `carry:${task.id}`;
+
+          if (!task.linkKey) {
+            await tx.task.update({
+              where: { id: task.id },
+              data: { linkKey: carryLinkKey },
+            });
+          }
+
+          const existingTodayCarry = await tx.task.findFirst({
+            where: {
+              studentId: session.user.id,
+              type: "SINGLE_DAY",
+              date: { gte: today, lte: endOfDay },
+              OR: [
+                { linkKey: carryLinkKey },
+                {
+                  linkKey: null,
+                  title: task.title,
+                  chapterId: task.chapterId,
+                  startTime: task.startTime,
+                  endTime: task.endTime,
+                },
+              ],
+            },
+          });
+
+          if (!existingTodayCarry) {
+            await tx.task.create({
+              data: {
+                studentId: session.user.id,
+                title: task.title,
+                chapterId: task.chapterId,
+                linkKey: carryLinkKey,
+                type: "SINGLE_DAY",
+                date: today,
+                startTime: task.startTime,
+                endTime: task.endTime,
+                completionPercent: task.completionPercent,
+                isCompleted: task.completionPercent >= 100,
+              },
+            });
+          }
+        }
       });
     }
 

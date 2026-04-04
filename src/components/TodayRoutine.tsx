@@ -8,6 +8,7 @@ type Task = {
   id: string;
   title: string;
   type?: "SINGLE_DAY" | "WEEKLY_RECURRING";
+  linkKey?: string | null;
   date?: string;
   dayOfWeek?: number;
   createdAt?: string;
@@ -23,7 +24,6 @@ type Task = {
 
 export default function TodayRoutine() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [percentage, setPercentage] = useState(0);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedMonthKey, setSelectedMonthKey] = useState(format(new Date(), "yyyy-MM"));
   const [isLoading, setIsLoading] = useState(true);
@@ -37,7 +37,33 @@ export default function TodayRoutine() {
     }
   };
 
-  const allDailyTasks = allTasks.filter((task) => task.type === "SINGLE_DAY" && !!task.date);
+  const dailyTaskIdentity = (task: Task) => {
+    const dateKey = toDateKey(task.date);
+    const fallbackIdentity = `${task.title}|${task.startTime}|${task.endTime}|${task.chapter?.subject?.name || ""}|${task.chapter?.name || ""}`;
+    return `${dateKey}|${task.linkKey || fallbackIdentity}`;
+  };
+
+  const dedupeDailyTasks = (tasks: Task[]) => {
+    const map = new Map<string, Task>();
+    for (const task of tasks) {
+      if (task.type !== "SINGLE_DAY" || !task.date) continue;
+      const key = dailyTaskIdentity(task);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, task);
+        continue;
+      }
+
+      // Keep the task with higher completion to avoid under-reporting progress.
+      map.set(
+        key,
+        (task.completionPercent || 0) >= (existing.completionPercent || 0) ? task : existing
+      );
+    }
+    return Array.from(map.values());
+  };
+
+  const allDailyTasks = dedupeDailyTasks(allTasks);
 
   const dailyTaskDateKeys = Array.from(
     new Set(allDailyTasks.map((task) => toDateKey(task.date)).filter(Boolean))
@@ -85,7 +111,6 @@ export default function TodayRoutine() {
       if (allRes.ok) {
         const data: Task[] = await allRes.json();
         setAllTasks(data);
-        setPercentage(computeTodayDailyPercentage(data));
       }
     } catch (e) {
       console.error("Failed to fetch today's tasks", e);
@@ -99,9 +124,7 @@ export default function TodayRoutine() {
   }, []);
 
   const computeTodayDailyPercentage = (tasksToMeasure: Task[]) => {
-    const todaysDailyTasks = tasksToMeasure.filter(
-      (task) => task.type === "SINGLE_DAY" && toDateKey(task.date) === todayKey
-    );
+    const todaysDailyTasks = dedupeDailyTasks(tasksToMeasure).filter((task) => toDateKey(task.date) === todayKey);
     if (todaysDailyTasks.length === 0) return 0;
     return (
       todaysDailyTasks.reduce((acc, task) => acc + (task.completionPercent || 0), 0) /
@@ -112,14 +135,12 @@ export default function TodayRoutine() {
   const updateTaskPercent = async (id: string, nextPercent: number) => {
     const safePercent = Math.max(0, Math.min(100, nextPercent));
     const previousAllTasks = allTasks;
-    const previousPercentage = percentage;
 
     try {
       const updatedTasks = allTasks.map((t) =>
         t.id === id ? { ...t, completionPercent: safePercent, isCompleted: safePercent >= 100 } : t
       );
       setAllTasks(updatedTasks);
-      setPercentage(computeTodayDailyPercentage(updatedTasks));
 
       const res = await fetch(`/api/student/tasks/${id}`, {
         method: "PATCH",
@@ -134,7 +155,6 @@ export default function TodayRoutine() {
       console.error(e);
       // Revert on failure without reloading whole widget
       setAllTasks(previousAllTasks);
-      setPercentage(previousPercentage);
     }
   };
 
@@ -156,6 +176,8 @@ export default function TodayRoutine() {
   const todayDailyTasks = allDailyTasks
     .filter((task) => toDateKey(task.date) === todayKey)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const todayPercentage = Math.round(computeTodayDailyPercentage(allTasks));
 
   const formatTime12h = (time24: string) => {
     if (!time24) return "";
@@ -181,7 +203,7 @@ export default function TodayRoutine() {
       <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl bg-gray-800 p-6 shadow-md border-l-4 border-blue-500">
           <h2 className="text-gray-400 font-semibold text-sm">Today&apos;s Progress</h2>
-          <p className="mt-2 text-4xl font-bold">{Math.round(percentage)}%</p>
+          <p className="mt-2 text-4xl font-bold">{todayPercentage}%</p>
         </div>
         <div className="rounded-xl bg-gray-800 p-6 shadow-md border-l-4 border-green-500">
           <h2 className="text-gray-400 font-semibold text-sm">Current Streak</h2>
