@@ -259,6 +259,54 @@ export function DailyPlanner() {
 
   const toDateKey = (dateValue?: string) => (dateValue ? format(new Date(dateValue), "yyyy-MM-dd") : "");
 
+  const dailyTaskIdentity = (task: PlannerTask) => {
+    const dateKey = toDateKey(task.date);
+    return `${dateKey}|${task.title.trim().toLowerCase()}|${task.startTime}|${task.endTime}|${task.chapter?.id || ""}`;
+  };
+
+  const dailyTaskTitleGroup = (task: PlannerTask) => {
+    const dateKey = toDateKey(task.date);
+    return `${dateKey}|${task.title.trim().toLowerCase()}|${task.chapter?.id || ""}`;
+  };
+
+  const dedupeDailyTasks = (allTasks: PlannerTask[]) => {
+    const exactMap = new Map<string, PlannerTask>();
+
+    for (const task of allTasks) {
+      if (task.type !== "SINGLE_DAY" || !task.date) continue;
+      const key = dailyTaskIdentity(task);
+      const existing = exactMap.get(key);
+
+      if (!existing || (task.completionPercent || 0) >= (existing.completionPercent || 0)) {
+        exactMap.set(key, task);
+      }
+    }
+
+    const groups = new Map<string, PlannerTask[]>();
+    for (const task of exactMap.values()) {
+      const groupKey = dailyTaskTitleGroup(task);
+      const current = groups.get(groupKey) || [];
+      current.push(task);
+      groups.set(groupKey, current);
+    }
+
+    const result: PlannerTask[] = [];
+    for (const groupTasks of groups.values()) {
+      const timed = groupTasks.filter((task) => !(task.startTime === "00:00" && task.endTime === "23:59"));
+
+      if (timed.length > 0) {
+        result.push(...timed);
+      } else {
+        const best = groupTasks.reduce((bestTask, task) =>
+          (task.completionPercent || 0) >= (bestTask.completionPercent || 0) ? task : bestTask
+        );
+        result.push(best);
+      }
+    }
+
+    return result;
+  };
+
   const getCarryFromLabel = (task: PlannerTask, targetDateKey: string) => {
     if (task.type !== "SINGLE_DAY") return null;
     if (toDateKey(task.date) !== targetDateKey) return null;
@@ -267,8 +315,8 @@ export function DailyPlanner() {
     return `From ${format(new Date(task.createdAt as string), "EEE, MMM d")}`;
   };
 
-  const daySpecificTasks = tasks
-    .filter((t) => t.type === "SINGLE_DAY" && t.date && toDateKey(t.date) === selectedDate)
+  const daySpecificTasks = dedupeDailyTasks(tasks)
+    .filter((t) => toDateKey(t.date) === selectedDate)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const weeklyTasksToday = tasks
