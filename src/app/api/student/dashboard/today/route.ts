@@ -33,8 +33,19 @@ export async function GET() {
     });
 
     if (pendingCarry.length > 0) {
+      const dedupedPendingCarryMap = new Map<string, (typeof pendingCarry)[number]>();
+      for (const task of pendingCarry) {
+        const key = `${task.linkKey || ""}|${task.title.trim().toLowerCase()}|${task.chapterId || ""}|${task.startTime}|${task.endTime}`;
+        const existing = dedupedPendingCarryMap.get(key);
+        if (!existing || task.completionPercent >= existing.completionPercent) {
+          dedupedPendingCarryMap.set(key, task);
+        }
+      }
+
+      const dedupedPendingCarry = Array.from(dedupedPendingCarryMap.values());
+
       await prisma.$transaction(async (tx) => {
-        for (const task of pendingCarry) {
+        for (const task of dedupedPendingCarry) {
           const carryLinkKey = task.linkKey?.trim() || `carry:${task.id}`;
 
           if (!task.linkKey) {

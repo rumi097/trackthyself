@@ -39,8 +39,13 @@ export default function TodayRoutine() {
 
   const dailyTaskIdentity = (task: Task) => {
     const dateKey = toDateKey(task.date);
-    const fallbackIdentity = `${task.title}|${task.startTime}|${task.endTime}|${task.chapter?.subject?.name || ""}|${task.chapter?.name || ""}`;
-    return `${dateKey}|${task.linkKey || fallbackIdentity}`;
+    const fallbackIdentity = `${task.title.trim().toLowerCase()}|${task.startTime}|${task.endTime}|${task.chapter?.subject?.name || ""}|${task.chapter?.name || ""}`;
+    return `${dateKey}|${fallbackIdentity}`;
+  };
+
+  const dailyTaskTitleGroup = (task: Task) => {
+    const dateKey = toDateKey(task.date);
+    return `${dateKey}|${task.title.trim().toLowerCase()}|${task.chapter?.subject?.name || ""}|${task.chapter?.name || ""}`;
   };
 
   const dedupeDailyTasks = (tasks: Task[]) => {
@@ -60,13 +65,42 @@ export default function TodayRoutine() {
         (task.completionPercent || 0) >= (existing.completionPercent || 0) ? task : existing
       );
     }
-    return Array.from(map.values());
+
+    const exactDeduped = Array.from(map.values());
+
+    const groups = new Map<string, Task[]>();
+    for (const task of exactDeduped) {
+      const groupKey = dailyTaskTitleGroup(task);
+      const current = groups.get(groupKey) || [];
+      current.push(task);
+      groups.set(groupKey, current);
+    }
+
+    const result: Task[] = [];
+    for (const groupTasks of groups.values()) {
+      const timed = groupTasks.filter((task) => !(task.startTime === "00:00" && task.endTime === "23:59"));
+      if (timed.length > 0) {
+        result.push(...timed);
+      } else {
+        // Keep only one all-day placeholder in each title/date group.
+        const best = groupTasks.reduce((bestTask, task) =>
+          (task.completionPercent || 0) >= (bestTask.completionPercent || 0) ? task : bestTask
+        );
+        result.push(best);
+      }
+    }
+
+    return result;
   };
 
   const allDailyTasks = dedupeDailyTasks(allTasks);
 
   const dailyTaskDateKeys = Array.from(
-    new Set(allDailyTasks.map((task) => toDateKey(task.date)).filter(Boolean))
+    new Set(
+      allDailyTasks
+        .flatMap((task) => [toDateKey(task.date), toDateKey(task.createdAt)])
+        .filter(Boolean)
+    )
   ).sort();
 
   const todayKey = format(new Date(), "yyyy-MM-dd");
@@ -164,9 +198,14 @@ export default function TodayRoutine() {
 
   const getDateProgress = (targetDateKey: string) => {
     const dateTasks = allDailyTasks.filter((task) => targetDateKey === toDateKey(task.date));
-    if (dateTasks.length === 0) return null;
-    const totalPercent = dateTasks.reduce((acc, task) => acc + (task.completionPercent || 0), 0);
-    return Math.round(totalPercent / dateTasks.length);
+    const tasksForProgress =
+      dateTasks.length > 0
+        ? dateTasks
+        : allDailyTasks.filter((task) => targetDateKey === toDateKey(task.createdAt));
+
+    if (tasksForProgress.length === 0) return null;
+    const totalPercent = tasksForProgress.reduce((acc, task) => acc + (task.completionPercent || 0), 0);
+    return Math.round(totalPercent / tasksForProgress.length);
   };
 
   const selectedDateTasks = allDailyTasks
